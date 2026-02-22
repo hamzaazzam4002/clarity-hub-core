@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -14,28 +15,34 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { login, user } = useAuth();
+
+  // Redirect if already logged in
+  if (user) {
+    navigate("/dashboard", { replace: true });
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate login
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    if (email && password) {
+    try {
+      await login(email, password);
       toast({
         title: "Welcome back!",
         description: "You have successfully logged in.",
       });
       navigate("/dashboard");
-    } else {
+    } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Error",
-        description: "Please enter your credentials.",
+        title: "Login failed",
+        description: error.message || "Invalid credentials. Please try again.",
       });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
@@ -59,7 +66,7 @@ export default function Login() {
               <Input
                 id="email"
                 type="email"
-                placeholder="john@company.com"
+                placeholder="admin@test.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -95,9 +102,6 @@ export default function Login() {
               {isLoading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Demo credentials: any email and password
-          </p>
         </CardContent>
       </Card>
     </div>

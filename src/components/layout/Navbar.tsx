@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface NavbarProps {
   sidebarCollapsed: boolean;
@@ -18,10 +19,16 @@ interface NavbarProps {
 
 export function Navbar({ sidebarCollapsed }: NavbarProps) {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const handleLogout = () => {
+    logout();
     navigate("/login");
   };
+
+  const initials = user?.name
+    ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+    : "??";
 
   return (
     <header
@@ -55,12 +62,12 @@ export function Navbar({ sidebarCollapsed }: NavbarProps) {
               <Button variant="ghost" className="gap-2 px-2">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback className="bg-primary text-primary-foreground">
-                    JD
+                    {initials}
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden text-left md:block">
-                  <p className="text-sm font-medium">John Doe</p>
-                  <p className="text-xs text-muted-foreground">Admin</p>
+                  <p className="text-sm font-medium">{user?.name || "User"}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{user?.role || ""}</p>
                 </div>
               </Button>
             </DropdownMenuTrigger>
