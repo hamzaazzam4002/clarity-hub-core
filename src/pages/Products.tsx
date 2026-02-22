@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Filter, Eye, Edit, Package } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
@@ -18,41 +19,38 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-
-interface Product {
-  id: string;
-  name: string;
-  sku: string;
-  category: string;
-  salePrice: number;
-  costPrice: number;
-  stock: number;
-  status: "active" | "inactive";
-}
-
-const mockProducts: Product[] = [
-  { id: "1", name: "Wireless Keyboard", sku: "KB-001", category: "Electronics", salePrice: 79.99, costPrice: 45.00, stock: 150, status: "active" },
-  { id: "2", name: "USB-C Hub", sku: "HUB-002", category: "Electronics", salePrice: 49.99, costPrice: 25.00, stock: 85, status: "active" },
-  { id: "3", name: "Office Chair", sku: "FRN-003", category: "Furniture", salePrice: 299.99, costPrice: 180.00, stock: 12, status: "active" },
-  { id: "4", name: "Desk Lamp", sku: "LGT-004", category: "Lighting", salePrice: 45.99, costPrice: 22.00, stock: 0, status: "inactive" },
-  { id: "5", name: "Monitor Stand", sku: "ACC-005", category: "Accessories", salePrice: 89.99, costPrice: 50.00, stock: 45, status: "active" },
-  { id: "6", name: "Webcam HD", sku: "CAM-006", category: "Electronics", salePrice: 129.99, costPrice: 75.00, stock: 28, status: "active" },
-  { id: "7", name: "Mouse Pad XL", sku: "ACC-007", category: "Accessories", salePrice: 24.99, costPrice: 8.00, stock: 200, status: "active" },
-  { id: "8", name: "Headphones Pro", sku: "AUD-008", category: "Electronics", salePrice: 199.99, costPrice: 110.00, stock: 5, status: "active" },
-];
+import { productsApi, type Product } from "@/lib/api";
 
 export default function Products() {
-  const [products] = useState<Product[]>(mockProducts);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const { toast } = useToast();
+  const [formData, setFormData] = useState({ name: "", sku: "", category: "", costPrice: "", salePrice: "", quantity: "", description: "" });
 
-  const categories = [...new Set(products.map((p) => p.category))];
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ["products", search, categoryFilter === "all" ? undefined : categoryFilter],
+    queryFn: () => productsApi.list({ search: search || undefined, category: categoryFilter === "all" ? undefined : categoryFilter }),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: productsApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setDialogOpen(false);
+      setFormData({ name: "", sku: "", category: "", costPrice: "", salePrice: "", quantity: "", description: "" });
+      toast({ title: "Product added", description: "The product has been successfully added." });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Error", description: err.message });
+    },
+  });
+
+  const categories = [...new Set(products.map((p) => p.category).filter(Boolean))] as string[];
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
@@ -64,10 +62,14 @@ export default function Products() {
   });
 
   const handleAddProduct = () => {
-    setDialogOpen(false);
-    toast({
-      title: "Product added",
-      description: "The product has been successfully added.",
+    createMutation.mutate({
+      name: formData.name,
+      sku: formData.sku,
+      price: Number(formData.salePrice) || 0,
+      costPrice: Number(formData.costPrice) || undefined,
+      quantity: Number(formData.quantity) || undefined,
+      category: formData.category || undefined,
+      description: formData.description || undefined,
     });
   };
 
@@ -87,35 +89,35 @@ export default function Products() {
         </div>
       ),
     },
-    { key: "category", label: "Category" },
+    { key: "category", label: "Category", render: (p: Product) => p.category || "—" },
     {
-      key: "salePrice",
+      key: "price",
       label: "Sale Price",
-      render: (product: Product) => `$${product.salePrice.toFixed(2)}`,
+      render: (product: Product) => `$${product.price.toFixed(2)}`,
     },
     {
-      key: "stock",
+      key: "quantity",
       label: "Stock",
       render: (product: Product) => (
-        <span className={product.stock <= 10 ? "font-medium text-destructive" : ""}>
-          {product.stock} units
+        <span className={product.quantity <= 10 ? "font-medium text-destructive" : ""}>
+          {product.quantity} units
         </span>
       ),
     },
     {
-      key: "status",
+      key: "isActive",
       label: "Status",
       render: (product: Product) => (
         <StatusBadge
-          status={product.status === "active" ? "active" : "inactive"}
-          label={product.status === "active" ? "Active" : "Inactive"}
+          status={product.isActive ? "active" : "inactive"}
+          label={product.isActive ? "Active" : "Inactive"}
         />
       ),
     },
     {
       key: "actions",
       label: "Actions",
-      render: (product: Product) => (
+      render: () => (
         <div className="flex gap-2">
           <Button variant="ghost" size="icon">
             <Eye className="h-4 w-4" />
@@ -140,7 +142,6 @@ export default function Products() {
         }}
       />
 
-      {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -159,77 +160,60 @@ export default function Products() {
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             {categories.map((cat) => (
-              <SelectItem key={cat} value={cat}>
-                {cat}
-              </SelectItem>
+              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Table */}
       <DataTable
         columns={columns}
         data={filteredProducts}
         keyExtractor={(p) => p.id}
-        emptyMessage="No products found"
+        emptyMessage={isLoading ? "Loading..." : "No products found"}
       />
 
-      {/* Add Product Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Add New Product</DialogTitle>
-            <DialogDescription>
-              Enter the product details below.
-            </DialogDescription>
+            <DialogDescription>Enter the product details below.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Product Name</Label>
-              <Input id="name" placeholder="Enter product name" />
+              <Input id="name" placeholder="Enter product name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="sku">SKU</Label>
-                <Input id="sku" placeholder="PRD-001" />
+                <Input id="sku" placeholder="PRD-001" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="category">Category</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input id="category" placeholder="Electronics" value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="costPrice">Cost Price</Label>
-                <Input id="costPrice" type="number" placeholder="0.00" />
+                <Input id="costPrice" type="number" placeholder="0.00" value={formData.costPrice} onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })} />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="salePrice">Sale Price</Label>
-                <Input id="salePrice" type="number" placeholder="0.00" />
+                <Input id="salePrice" type="number" placeholder="0.00" value={formData.salePrice} onChange={(e) => setFormData({ ...formData, salePrice: e.target.value })} />
               </div>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="stock">Initial Stock</Label>
-              <Input id="stock" type="number" placeholder="0" />
+              <Input id="stock" type="number" placeholder="0" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} />
             </div>
           </div>
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddProduct} disabled={createMutation.isPending}>
+              {createMutation.isPending ? "Adding..." : "Add Product"}
             </Button>
-            <Button onClick={handleAddProduct}>Add Product</Button>
           </div>
         </DialogContent>
       </Dialog>
